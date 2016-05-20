@@ -1,0 +1,154 @@
+<?php
+
+// $Id$
+
+/**
+ * @file
+ * Module for prepopulating field values in a Webform
+ *
+ */
+ 
+/*
+* Implement hook_form_alter
+*/
+function cul_prepopulate_webforms_form_alter(&$form, &$form_state, $form_id) {
+  if (substr($form_id, 0, 23) == 'webform_client_form_229') {
+    // 2CUL borrowing form
+    cul_prepopulate_webforms_2cul($form, $form_state);
+  }
+  elseif (substr($form_id, 0, 23) == 'webform_client_form_223') {
+    // Purchase request form
+    cul_prepopulate_webforms_purchase_request($form, $form_state);
+  }
+}
+
+/*
+ * Fill in details for the 2CUL borrowing form
+ */
+function cul_prepopulate_webforms_2cul(&$form, $form_state) {
+  $netid = cul_prepopulate_webforms_get_netid();
+  $result = cul_prepopulate_webforms_get_ldap($netid);
+  
+  $firstName = $lastName = $netid = $email = $status = '';
+  if ($result['givenname']) {
+    $firstName = $result['givenname'][0];
+  }
+  
+  if ($result['sn']) {
+    $lastName = $result['sn'][0];
+  }
+  
+  if ($result['uid']) {
+    $netid = $result['uid'][0];
+  }
+  
+  $email = cul_prepopulate_webforms_get_email($result);
+  
+  // Status
+  if ($result['cornelledutype']) {
+    $status = $result['cornelledutype'][0];
+  }
+
+  $form['submitted']['first_name']['#default_value'] = $firstName;
+  $form['submitted']['last_name']['#default_value'] = $lastName;
+  $form['submitted']['netid']['#default_value'] = $netid;
+  $form['submitted']['email_address']['#default_value'] = $email;
+  $form['submitted']['current_status']['#default_value'] = $status;
+
+}
+
+/*
+ * Fill in details for the purchase request form
+ */
+function cul_prepopulate_webforms_purchase_request(&$form, $form_state) {
+  $netid = cul_prepopulate_webforms_get_netid();
+  $result = cul_prepopulate_webforms_get_ldap($netid);
+  
+  // Name
+  $name = $email = $department = $affiliation = '';
+  if ($result['displayname']) {
+    $name = $result['displayname'][0];
+  }
+  elseif ($result['cornelledulegalname']) {
+    $name = $result['cornelledulegalname'][0];
+  }
+  elseif ($result['sn']) {
+    if ($result['givenname']) {
+      $name = $result['givenname'][0] . ' ';
+    }
+    $name = $result['sn'][0];
+  }
+  
+  $email = cul_prepopulate_webforms_get_email($result);
+  
+  // Department
+  if ($result['cornelledudeptname1']) {
+    $department = $result['cornelledudeptname1'][0];
+  }
+  
+  // Affiliation
+  if ($result['cornelledutype']) {
+    $type = $result['cornelledutype'][0];
+    if ($type == 'academic') {
+      $affiliation = 'fac';
+    }
+    elseif ($type == 'staff') {
+      $affiliation = 'staff';
+    }
+    elseif ($type == 'alumni') {
+      $affiliation = 'alum';
+    }
+    elseif ($type == 'student') {
+      if ($result['cornelleduacadcollege'][0] == 'GR') {
+        $affiliation = 'grad';
+      }
+      else {
+        $affiliation = 'und';
+      }
+    }
+  }
+  
+  $form['submitted']['your_full_name_is']['#default_value'] = $name;
+  $form['submitted']['your_e_mail_address']['#default_value'] = $email;
+  $form['submitted']['department']['#default_value'] = $department;
+  $form['submitted']['status']['#default_value'] = $affiliation;
+
+}
+
+/*
+ * Get the netID stored in a cookie after CUWebAuth runs
+ */
+function cul_prepopulate_webforms_get_netid() {
+  preg_match('/netid=(.*?);/', $_SERVER['HTTP_COOKIE'], $matches);
+  return $matches[1];
+}
+
+/*
+ * Use LDAP lookup script to get user details
+ */ 
+function cul_prepopulate_webforms_get_ldap($netid) {
+  $ds = ldap_connect('directory.cornell.edu');
+  if ($ds) {
+    $r = ldap_bind($ds);
+    $sr = ldap_search($ds, 'o=Cornell University, c=US', "uid=$netid");
+    $info = ldap_get_entries($ds,$sr);
+    if ($info['count'] > 0) { return $info[0]; }
+    return null;
+  }
+  else {
+    drupal_set_message('unable to connect');
+    return null;
+  }
+
+}
+
+/*
+ * Get email from LDAP entry
+ */
+function cul_prepopulate_webforms_get_email($entry) {
+  // There are multiple email fields available, so this is
+  // the simplest thing we can do for now.
+  if ($entry['cornelledupublishedemail']) {
+    return $entry['cornelledupublishedemail'][0];
+  }
+}
