@@ -120,7 +120,7 @@ function cul_prepopulate_webforms_purchase_request(&$form, $form_state) {
  */
 function cul_prepopulate_webforms_get_netid() {
   preg_match('/netid=(.*?);/', $_SERVER['HTTP_COOKIE'], $matches);
-  return $matches[1];
+  return isset($matches[1]) ? $matches[1] : NULL;
 }
 
 /*
